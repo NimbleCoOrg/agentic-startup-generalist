@@ -1,0 +1,39 @@
+{
+  "$comment": "Example routing config for sg_route_tasks. Copy into your venture overlay / deployment glue and replace every <placeholder>. Each key under 'surfaces' MUST be a registered surface type — the package registers markdown, board, and external; a deployment may register its own adapters beside them. Real ids/keys are venture particulars: never commit them; the sanitization gate blocks a real one.",
+
+  "default": "markdown",
+
+  "by_kind": {
+    "$comment": "Route by item kind. Actionable work (task/commitment) falls through to 'default'; informational warm updates go to the tended board so whatever tends it surfaces them next cycle.",
+    "decision": "board",
+    "risk": "board",
+    "open_question": "board"
+  },
+
+  "by_owner": {
+    "$comment": "Optional per-person override, highest precedence. A member whose tasks land on their own surface. Keys are your own person slugs. Omit for team-wide routing only.",
+    "<person-slug>": "external"
+  },
+
+  "surfaces": {
+    "markdown": {
+      "$comment": "Fully implemented, no credentials required — writes a local board file. Set is_inbox true to designate a triage lane unattended runs may write to.",
+      "path": "<absolute path to a local tasks.md>",
+      "is_inbox": true
+    },
+
+    "board": {
+      "$comment": "Writes garden-format board lines (- [ ] text #id) into a board file a tender (e.g. a gardener process) maintains. git_commit lets the tender pick changes up on its next pull.",
+      "path": "<absolute path to the tended board .md>",
+      "git_commit": true
+    },
+
+    "external": {
+      "$comment": "A declared external tracker (Notion database, Linear team, GitHub Project, ...). Gates on the env var named here and refuses loudly until a deployment implements list_existing/write against its API.",
+      "credential_env": "<YOUR_TRACKER_TOKEN_ENV_VAR>",
+      "impl_hint": "query the tracker for existing items; create/update records mapping Item.kind/owner/due to its schema"
+    }
+  },
+
+  "allow_live_write": false
+}
