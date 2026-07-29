@@ -160,7 +160,11 @@ def _describe_failure(exc):
     chain, seen, cur = [], set(), exc
     while cur is not None and id(cur) not in seen:
         seen.add(id(cur))
-        chain.append(f"{type(cur).__name__}: {cur}")
+        # httpx re-raises the same error through several layers; repeating an
+        # identical line three times buries the hint rather than adding detail.
+        line = f"{type(cur).__name__}: {cur}"
+        if line not in chain:
+            chain.append(line)
         cur = cur.__cause__ or cur.__context__
     detail = " <- caused by ".join(chain)
 
