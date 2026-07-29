@@ -9,6 +9,10 @@ an LLM that flags operator/engagement *particulars* — names, case IDs, hostnam
 anything that would make a "generic" artifact actually specific to one operator.
 Requires ANTHROPIC_API_KEY; skipped with a loud warning if unset (so local runs
 work), REQUIRED in CI (pass --require-semantic to fail when the key is missing).
+A key that is present but unusable — malformed, revoked, rate-limited, or the API
+unreachable — is treated the same as unset: the layer "did not run", and
+--require-semantic decides whether that is fatal. A green result never silently
+means fewer layers ran than you think.
 
 A flag routes to a human maintainer — it is advisory, not an automatic final
 rejection. But the deterministic layer's hits (real secrets/PII) are hard fails.
@@ -127,9 +131,22 @@ def assess(content, client, filename, system_prompt, model):
     return {"flagged": bool(verdict["flagged"]), "reasons": list(reasons)}
 
 
+def api_key():
+    """The semantic layer's credential, whitespace-stripped.
+
+    A key pasted into a CI secret or a .env very often carries a trailing
+    newline. An API key never legitimately contains surrounding whitespace, but
+    an un-stripped one is sent as an HTTP header value and blows up deep in the
+    transport as `LocalProtocolError: Illegal header value` — a traceback that
+    says nothing about the real cause. Strip once, here, so both the
+    is-it-present check and the client construction agree.
+    """
+    return os.environ.get("ANTHROPIC_API_KEY", "").strip()
+
+
 def _make_client():  # pragma: no cover - thin wrapper, mocked in tests
     import anthropic
-    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    return anthropic.Anthropic(api_key=api_key())
 
 # ---------------------------------------------------------------- file selection
 
@@ -195,20 +212,42 @@ def main(argv, root=".", client_factory=_make_client):
     sem_flagged = {}
     sem_ran = False
     if sensitive:
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            sem_ran = True
-            client = client_factory()
+        if api_key():
             system_prompt = build_system_prompt(cfg)
             model = cfg.get("semantic", {}).get("model", "claude-opus-4-8")
-            for rel in sensitive:
-                path = os.path.join(root, rel)
-                if not os.path.exists(path):
-                    continue
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    content = fh.read()
-                verdict = assess(content, client, rel, system_prompt, model)
-                if verdict["flagged"]:
-                    sem_flagged[rel] = verdict["reasons"]
+            # A key being present is not the same as the semantic layer working:
+            # the key can be malformed, revoked, or rate-limited, and the model
+            # can be unreachable. Treat that as "the layer did not run" and let
+            # require_semantic decide whether that is fatal — never let an
+            # unhandled transport traceback stand in for a verdict.
+            try:
+                client = client_factory()
+                for rel in sensitive:
+                    path = os.path.join(root, rel)
+                    if not os.path.exists(path):
+                        continue
+                    with open(path, encoding="utf-8", errors="replace") as fh:
+                        content = fh.read()
+                    verdict = assess(content, client, rel, system_prompt, model)
+                    if verdict["flagged"]:
+                        sem_flagged[rel] = verdict["reasons"]
+                sem_ran = True
+            except Exception as exc:  # noqa: BLE001 - any failure means "did not run"
+                sem_flagged = {}
+                detail = f"{type(exc).__name__}: {exc}"
+                if "Illegal header value" in str(exc):
+                    detail += ("\n  HINT: that error means the key contains a character "
+                               "illegal in an HTTP header — almost always stray "
+                               "whitespace or a trailing newline in the stored secret. "
+                               "Re-enter ANTHROPIC_API_KEY with no trailing newline.")
+                if require_semantic:
+                    print(f"ERROR: the semantic layer could not run — {detail}\n"
+                          f"--require-semantic is set, so failing closed rather than "
+                          f"reporting a half-checked diff.")
+                    return 2
+                print(f"WARNING: the semantic layer could not run — {detail}\n"
+                      f"Continuing with the deterministic layer only. Venture "
+                      f"particulars were NOT checked.")
         elif require_semantic:
             print(f"ERROR: --require-semantic set but ANTHROPIC_API_KEY is missing, "
                   f"and {len(sensitive)} content-bearing file(s) need the semantic layer. "

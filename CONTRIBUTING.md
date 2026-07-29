@@ -82,6 +82,13 @@ Locally, the gate skips the semantic layer with a loud warning when no key is se
 labels its own output deterministic-only, so offline runs work without pretending to be
 a full pass. Pass `--require-semantic` to make a missing key an error instead.
 
+A key that is *present but unusable* — malformed, revoked, rate-limited, or the API
+unreachable — counts as "the layer did not run", not as a pass and not as a crash. The
+gate reports why, and `--require-semantic` decides whether that's fatal. If you see
+`Illegal header value`, the stored key has stray whitespace or a trailing newline; the
+gate strips surrounding whitespace itself, but a secret containing an interior newline
+has to be re-entered.
+
 To tune what counts as a particular for this domain, edit `sanitize.config.json` —
 that is the single configuration surface for the gate. See the inline comments in that
 file.

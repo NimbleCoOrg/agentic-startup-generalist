@@ -173,6 +173,78 @@ def test_require_semantic_passes_when_nothing_needs_the_semantic_layer(tmp_path,
     assert cs.main(["--require-semantic", "engine/router.py"], root=root) == 0
 
 
+class _ExplodingClient:
+    """Stands in for a malformed/revoked key or an unreachable API."""
+
+    def __init__(self, exc):
+        self._exc = exc
+        self.messages = self
+
+    def create(self, **kw):
+        raise self._exc
+
+
+def test_api_key_is_whitespace_stripped(monkeypatch):
+    """A secret pasted with a trailing newline must not reach the HTTP layer —
+    un-stripped it raises 'Illegal header value' deep inside httpx."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-ant-whatever\n")
+    assert cs.api_key() == "sk-ant-whatever"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "   \n ")
+    assert cs.api_key() == ""  # whitespace-only is absent, not present
+
+
+def test_semantic_failure_fails_closed_under_require_semantic(tmp_path, monkeypatch, capsys):
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["--require-semantic", "hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "could not run" in out
+    assert "failing closed" in out
+
+
+def test_semantic_failure_degrades_loudly_without_require_semantic(tmp_path, monkeypatch, capsys):
+    """Without the flag, an API failure must not hard-fail the run — but it also
+    must not be reported as a clean full pass."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "could not run" in out
+    assert "DETERMINISTIC ONLY" in out
+    assert "both layers ran" not in out
+
+
+def test_illegal_header_value_gets_an_actionable_hint(tmp_path, monkeypatch, capsys):
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    cs.main(["hermes-skill/SKILL.md"], root=root,
+            client_factory=lambda: _ExplodingClient(
+                RuntimeError("Illegal header value b'***'")))
+    assert "trailing newline" in capsys.readouterr().out
+
+
+def test_secret_still_hard_fails_even_if_semantic_layer_breaks(tmp_path, monkeypatch):
+    """The deterministic floor is independent of the semantic layer's health."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json",
+           '{"sensitive_prefixes":["hermes-skill/"],"deterministic":{"enabled":true,"allow_substrings":[]}}')
+    _write(root, "hermes-skill/SKILL.md", "key sk-ant-api03-CCCCCCCCCCCCCCCCCCCCCCCC")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    assert rc == 1
+
+
 def test_skip_paths_excludes_fixtures_from_deterministic(tmp_path, monkeypatch):
     root = str(tmp_path)
     _write(root, "sanitize.config.json",
