@@ -288,3 +288,43 @@ def test_full_tree_mode_scans_tracked_files(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     rc = cs.main(["--full-tree"], root=root)
     assert rc == 1  # AKIA key caught in full-tree sweep
+
+
+def test_hard_fail_hits_are_reported_even_when_the_semantic_layer_fails_closed(
+    tmp_path, monkeypatch, capsys
+):
+    """A broken key must not swallow a real credential hit.
+
+    --require-semantic returns 2 the moment the semantic layer can't run. If that
+    return happened before the deterministic report, the single most actionable
+    line the gate can print — the SECRET/PII hit it *did* find — would never reach
+    the log, which is exactly the CI state a malformed repo secret produces.
+    """
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json",
+           '{"sensitive_prefixes":["hermes-skill/"],'
+           '"deterministic":{"enabled":true,"allow_substrings":[]}}')
+    _write(root, "hermes-skill/SKILL.md", "oops AKIA1234567890ABCDEF left in prose")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["--require-semantic", "hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "SECRET/PII hermes-skill/SKILL.md" in out
+    assert "the deterministic layer DID run and hard-failed" in out
+
+
+def test_hard_fail_hits_are_reported_when_require_semantic_has_no_key(
+    tmp_path, monkeypatch, capsys
+):
+    """Same guarantee on the missing-key path, not just the broken-key path."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json",
+           '{"sensitive_prefixes":["hermes-skill/"],'
+           '"deterministic":{"enabled":true,"allow_substrings":[]}}')
+    _write(root, "hermes-skill/SKILL.md", "oops AKIA1234567890ABCDEF left in prose")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    rc = cs.main(["--require-semantic", "hermes-skill/SKILL.md"], root=root)
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "SECRET/PII hermes-skill/SKILL.md" in out

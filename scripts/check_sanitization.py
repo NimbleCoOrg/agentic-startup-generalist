@@ -149,6 +149,21 @@ def _make_client():  # pragma: no cover - thin wrapper, mocked in tests
     return anthropic.Anthropic(api_key=api_key())
 
 
+def _report_det_hits(det_hits):
+    """Print the deterministic SECRET/PII block.
+
+    Called from the report section, and also before any early fail-closed return:
+    a hard-fail credential hit is the single most actionable thing the gate can
+    say, and it must not be swallowed just because the semantic layer separately
+    failed to run.
+    """
+    for rel, hits in det_hits.items():
+        print(f"SECRET/PII {rel}:")
+        for label, text in hits:
+            shown = text if len(text) < 12 else text[:6] + "…"
+            print(f"  - {label}: {shown}")
+
+
 def _describe_failure(exc):
     """Render an exception plus its cause chain, with a hint where we can give one.
 
@@ -269,17 +284,25 @@ def main(argv, root=".", client_factory=_make_client):
                 sem_flagged = {}
                 detail = _describe_failure(exc)
                 if require_semantic:
+                    _report_det_hits(det_hits)
                     print(f"ERROR: the semantic layer could not run — {detail}\n"
                           f"--require-semantic is set, so failing closed rather than "
                           f"reporting a half-checked diff.")
+                    if det_hits:
+                        print("Note: the deterministic layer DID run and hard-failed "
+                              "above — fix those hits regardless of the semantic layer.")
                     return 2
                 print(f"WARNING: the semantic layer could not run — {detail}\n"
                       f"Continuing with the deterministic layer only. Venture "
                       f"particulars were NOT checked.")
         elif require_semantic:
+            _report_det_hits(det_hits)
             print(f"ERROR: --require-semantic set but ANTHROPIC_API_KEY is missing, "
                   f"and {len(sensitive)} content-bearing file(s) need the semantic layer. "
                   f"Failing closed rather than reporting a half-checked diff.")
+            if det_hits:
+                print("Note: the deterministic layer DID run and hard-failed above — "
+                      "fix those hits regardless of the semantic layer.")
             return 2
         else:
             print(f"WARNING: ANTHROPIC_API_KEY unset — semantic layer SKIPPED for "
@@ -289,11 +312,7 @@ def main(argv, root=".", client_factory=_make_client):
                   f"--require-semantic to fail closed instead of warning.")
 
     # ---- report
-    for rel, hits in det_hits.items():
-        print(f"SECRET/PII {rel}:")
-        for label, text in hits:
-            shown = text if len(text) < 12 else text[:6] + "…"
-            print(f"  - {label}: {shown}")
+    _report_det_hits(det_hits)
     for rel, reasons in sem_flagged.items():
         print(f"FLAGGED {rel}:")
         for r in reasons:

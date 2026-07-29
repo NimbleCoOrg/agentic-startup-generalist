@@ -36,9 +36,12 @@ codenames, no infrastructure, no product it is bound to. The shared layer names 
 venture, by design and by enforcement.
 
 That boundary is not a convention you can bend. The CI sanitization gate
-(`scripts/check_sanitization.py`) runs on every PR touching `sensitive_prefixes` paths;
-if a venture particular lands in this file or any sibling shared skill, the gate fails
-the PR. When you find yourself wanting to write down "who the founder is" or "which
+(`scripts/check_sanitization.py`) runs on every PR touching `sensitive_prefixes` paths.
+Its coverage is **not uniform**, so do not lean on it: the deterministic secrets/PII
+layer always runs and hard-fails, but the semantic layer that recognises a *venture
+particular* cannot run on PRs from forks — there a maintainer must review by hand
+(see [CONTRIBUTING.md](../CONTRIBUTING.md#sanitization)). The rule holds whether or
+not the machine catches you. When you find yourself wanting to write down "who the founder is" or "which
 board we use," that content belongs in the private overlay described at the end of this
 file, never here.
 
@@ -257,7 +260,10 @@ Hermes's skill-discovery mechanism auto-links private overlays: any skill file w
 begins with `startup-generalist-` and is present in `HERMES_HOME/skills/` is available to
 the agent alongside this one. No further wiring required.
 
-The sanitization gate (`scripts/check_sanitization.py`) enforces this boundary on every
-PR touching `sensitive_prefixes` paths. If you put venture particulars in this shared
-file by mistake, the gate blocks the push. See `sanitize.config.json` and
+The sanitization gate (`scripts/check_sanitization.py`) backs this boundary on every
+PR touching `sensitive_prefixes` paths — a PR, not a push; nothing runs on `git push`
+alone. If you put venture particulars in this shared file by mistake it is a *backstop*,
+not a guarantee: secrets and PII hard-fail on every PR, but particulars are caught by the
+semantic layer, which cannot run on fork PRs. See
+[CONTRIBUTING.md](../CONTRIBUTING.md#sanitization), `sanitize.config.json`, and
 `docs/promotion-and-upstream.md`.

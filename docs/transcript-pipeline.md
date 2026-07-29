@@ -21,7 +21,9 @@ surface/source) add one adapter.
 
 Everything venture-specific below — page ids, database ids, tracker tokens, who routes
 where — lives in the operator's private overlay and `.env`, **never** in a committed file.
-The sanitization gate blocks a real id committed here.
+A real id committed here is what the sanitization gate's semantic layer exists to
+catch — but that layer cannot run on fork PRs, so treat the gate as a backstop, not
+a permission slip (see [CONTRIBUTING.md](../CONTRIBUTING.md#sanitization)).
 
 ---
 

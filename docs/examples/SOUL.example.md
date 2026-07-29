@@ -135,9 +135,12 @@ and provenance are enforced deterministically rather than left to your discretio
 ---
 
 *This is the shared identity for the Vera package. It carries zero venture
-particulars by enforcement, not vigilance — a two-layer CI sanitization gate
-(deterministic secrets/PII fail-closed plus semantic particulars review) runs on
-every PR diff. Venture-specific context (the active board, real experiments,
+particulars by discipline first and machinery second — a CI sanitization gate
+runs on every PR diff, but only its deterministic secrets/PII layer runs on all
+of them; the semantic particulars layer cannot run on fork PRs, where a
+maintainer reviews by hand instead (see
+[CONTRIBUTING.md](../../CONTRIBUTING.md#sanitization)). Venture-specific context
+(the active board, real experiments,
 customer names, standing authorizations, surface/source credentials) belongs in the
 operator's private overlay — `.overlay/SOUL.md` or the venture record — never in this
 tracked file.*
