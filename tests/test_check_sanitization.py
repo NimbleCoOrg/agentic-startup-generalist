@@ -131,6 +131,48 @@ def test_main_require_semantic_fails_without_key(tmp_path, monkeypatch):
     assert rc == 2
 
 
+def test_deterministic_only_pass_does_not_claim_both_layers(tmp_path, monkeypatch, capsys):
+    """A no-key run over content-bearing files must PASS but say plainly that the
+    semantic layer did not run. Reporting a bare 'clean' here is the honesty gap:
+    it reads as a full pass while only half the gate executed."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology: grade sources A-F.")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    rc = cs.main(["hermes-skill/SKILL.md"], root=root)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "semantic layer SKIPPED" in out
+    assert "DETERMINISTIC ONLY" in out
+    assert "both layers ran" not in out
+
+
+def test_no_sensitive_files_is_distinguished_from_a_skipped_semantic_layer(
+    tmp_path, monkeypatch, capsys
+):
+    """Nothing for the semantic layer to scan is not the same failure mode as the
+    semantic layer being unable to run — don't emit the scary warning for it."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "engine/router.py", "def route(x): return x")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    rc = cs.main(["engine/router.py"], root=root)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no content-bearing files in scope" in out
+    assert "SKIPPED" not in out
+
+
+def test_require_semantic_passes_when_nothing_needs_the_semantic_layer(tmp_path, monkeypatch):
+    """--require-semantic must not fail a diff that has no content-bearing files —
+    otherwise every engine-only PR breaks CI once the flag is wired."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "engine/router.py", "def route(x): return x")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert cs.main(["--require-semantic", "engine/router.py"], root=root) == 0
+
+
 def test_skip_paths_excludes_fixtures_from_deterministic(tmp_path, monkeypatch):
     root = str(tmp_path)
     _write(root, "sanitize.config.json",

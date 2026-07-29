@@ -210,11 +210,16 @@ def main(argv, root=".", client_factory=_make_client):
                 if verdict["flagged"]:
                     sem_flagged[rel] = verdict["reasons"]
         elif require_semantic:
-            print("ERROR: --require-semantic set but ANTHROPIC_API_KEY is missing.")
+            print(f"ERROR: --require-semantic set but ANTHROPIC_API_KEY is missing, "
+                  f"and {len(sensitive)} content-bearing file(s) need the semantic layer. "
+                  f"Failing closed rather than reporting a half-checked diff.")
             return 2
         else:
-            print("WARNING: ANTHROPIC_API_KEY unset — semantic layer SKIPPED "
-                  "(deterministic layer still ran). Set the key for full coverage.")
+            print(f"WARNING: ANTHROPIC_API_KEY unset — semantic layer SKIPPED for "
+                  f"{len(sensitive)} content-bearing file(s). The deterministic layer "
+                  f"still ran, so secrets/PII are covered, but venture particulars are "
+                  f"NOT. This result is not a full pass. Set the key, or pass "
+                  f"--require-semantic to fail closed instead of warning.")
 
     # ---- report
     for rel, hits in det_hits.items():
@@ -236,7 +241,15 @@ def main(argv, root=".", client_factory=_make_client):
     if sem_flagged:
         print("\nsanitization: possible particulars found — needs human review.")
         return 1
-    tail = "" if sem_ran else " (semantic layer skipped — deterministic only)"
+    # Be precise about WHICH layers actually ran. "clean" from a deterministic-only
+    # run is a weaker claim than "clean" from both layers, and the difference must
+    # not be silent — that is how a gate reports green while doing half its job.
+    if sem_ran:
+        tail = " (both layers ran)"
+    elif sensitive:
+        tail = " — DETERMINISTIC ONLY; semantic layer did not run (see warning above)"
+    else:
+        tail = " (deterministic only; no content-bearing files in scope)"
     print(f"\nsanitization: clean{tail}.")
     return 0
 

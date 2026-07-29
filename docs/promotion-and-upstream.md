@@ -6,12 +6,12 @@ that earned it.
 
 There are two promotion paths, and they are not the same thing. Path A is
 **yours**: you generalize a method and land it in your own `agentic-startup-generalist`
-package. Path B is **shared**: you propose a genuinely generic pattern to the HSM
+package. Path B is **shared**: you propose a genuinely generic pattern to the Swarm Map
 base package that every deployed agent inherits. The control model, what actually
 merges, and the blast radius are different in each. Read both before you assume
 the one you want.
 
-| | **Path A — your package** | **Path B — HSM base (upstream commons)** |
+| | **Path A — your package** | **Path B — Swarm Map base (upstream commons)** |
 |---|---|---|
 | Who controls the merge | You (maintainer of `agentic-startup-generalist`) | NimbleCo base-package maintainers |
 | What actually merges | Your generalized artifact, your bytes | A **re-written** implementation of your pattern — not your bytes |
@@ -83,13 +83,13 @@ full-tree mode tends the garden.
 
 ---
 
-## Path B — Submit upstream to the HSM base package
+## Path B — Submit upstream to the Swarm Map base package
 
-The HSM base package is the **shared commons**: the plugins, skills, and base
+The Swarm Map base package is the **shared commons**: the plugins, skills, and base
 soul that every agent built on `hermes-agent-mt` inherits. When something in your
 package turns out to be generic — useful to *any* team, not just your domain — you
 can propose it upstream to the base package (`infra/artifacts.json` in
-hermes-swarm-map).
+swarm-map).
 
 Read this part carefully, because the merge model is **not** what you're used to.
 
@@ -137,10 +137,12 @@ From the polycentric-commons thesis, the incentives are real:
 - **Accepted patterns cut your future merge friction.** Every generic thing you
   push upstream is one fewer local divergence to reconcile when you sync from the
   base. Minimal upstream divergence keeps your updates low-conflict.
-- **Lead-time stays your moat.** You generalize and contribute *after* the
-  technique has already paid off in your ventures. The commons gets the
-  method; you keep the months of operational learning that made it work. Generic
-  methodology becomes shared infrastructure — your edge does not.
+- **The method generalizes; the particulars never leave.** You contribute *after*
+  a technique has proven itself, which is also when you can describe it without
+  reference to any one venture. What ships upstream is the generic methodology.
+  The operational detail that produced it — the boards, the metrics, the
+  subjects — stays in your instance, because that is the contribution boundary,
+  not an afterthought.
 
 ---
 

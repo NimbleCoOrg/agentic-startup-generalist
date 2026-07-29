@@ -46,7 +46,7 @@ For this venture:
 - **Unattended runs →** the `is_inbox: true` triage lane at `<abs path>`. Never point the
   automation at a live board.
 
-## Env (in .env / HSM env store — NOT here as values)
+## Env (in .env / Swarm Map env store — NOT here as values)
 
 - `NOTION_API_KEY` — <where it lives, if the notion source or an external Notion surface is used>
 - `<YOUR_TRACKER_TOKEN_ENV_VAR>` — <where it lives, if an external surface is used>
