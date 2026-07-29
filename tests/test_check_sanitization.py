@@ -230,7 +230,29 @@ def test_illegal_header_value_gets_an_actionable_hint(tmp_path, monkeypatch, cap
     cs.main(["hermes-skill/SKILL.md"], root=root,
             client_factory=lambda: _ExplodingClient(
                 RuntimeError("Illegal header value b'***'")))
-    assert "trailing newline" in capsys.readouterr().out
+    assert "single unbroken line" in capsys.readouterr().out
+
+
+def test_failure_detail_walks_the_cause_chain():
+    """The SDK hides transport detail behind APIConnectionError('Connection error.').
+    Reporting only the outer exception loses the one actionable fact."""
+    try:
+        try:
+            raise ValueError("Illegal header value b'***'")
+        except ValueError as inner:
+            raise RuntimeError("Connection error.") from inner
+    except RuntimeError as exc:
+        detail = cs._describe_failure(exc)
+    assert "Connection error." in detail
+    assert "Illegal header value" in detail
+    assert "caused by" in detail
+    assert "single unbroken line" in detail  # hint found via the cause, not the surface
+
+
+def test_failure_detail_terminates_on_self_referential_cause():
+    exc = RuntimeError("boom")
+    exc.__context__ = exc  # pathological, but must not hang
+    assert "boom" in cs._describe_failure(exc)
 
 
 def test_secret_still_hard_fails_even_if_semantic_layer_breaks(tmp_path, monkeypatch):

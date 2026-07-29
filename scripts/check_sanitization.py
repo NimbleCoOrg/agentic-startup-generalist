@@ -148,6 +148,35 @@ def _make_client():  # pragma: no cover - thin wrapper, mocked in tests
     import anthropic
     return anthropic.Anthropic(api_key=api_key())
 
+
+def _describe_failure(exc):
+    """Render an exception plus its cause chain, with a hint where we can give one.
+
+    The Anthropic SDK wraps transport problems in `APIConnectionError`, whose own
+    message is the useless string "Connection error." The actionable detail —
+    e.g. `LocalProtocolError: Illegal header value` — is only on `__cause__`, so
+    printing just the outer exception hides the one fact you need.
+    """
+    chain, seen, cur = [], set(), exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        chain.append(f"{type(cur).__name__}: {cur}")
+        cur = cur.__cause__ or cur.__context__
+    detail = " <- caused by ".join(chain)
+
+    if "Illegal header value" in detail:
+        detail += (
+            "\n  HINT: the API key contains a character that is illegal in an HTTP "
+            "header — stray whitespace, a trailing newline, or a newline in the "
+            "middle from a key pasted across two lines. Surrounding whitespace is "
+            "stripped automatically, so an interior newline is the likely cause: "
+            "re-enter the ANTHROPIC_API_KEY secret as a single unbroken line."
+        )
+    elif "APIStatusError" in detail or "authentication" in detail.lower():
+        detail += ("\n  HINT: the key was well-formed but rejected. Check that it is "
+                   "current and has access to the configured model.")
+    return detail
+
 # ---------------------------------------------------------------- file selection
 
 def select_sensitive_files(paths, prefixes):
@@ -234,12 +263,7 @@ def main(argv, root=".", client_factory=_make_client):
                 sem_ran = True
             except Exception as exc:  # noqa: BLE001 - any failure means "did not run"
                 sem_flagged = {}
-                detail = f"{type(exc).__name__}: {exc}"
-                if "Illegal header value" in str(exc):
-                    detail += ("\n  HINT: that error means the key contains a character "
-                               "illegal in an HTTP header — almost always stray "
-                               "whitespace or a trailing newline in the stored secret. "
-                               "Re-enter ANTHROPIC_API_KEY with no trailing newline.")
+                detail = _describe_failure(exc)
                 if require_semantic:
                     print(f"ERROR: the semantic layer could not run — {detail}\n"
                           f"--require-semantic is set, so failing closed rather than "
