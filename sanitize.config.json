@@ -1,27 +1,24 @@
 {
   "$comment": "Sanitization gate config for agentic-startup-generalist. The deterministic layer (secrets/PII) needs no tuning; the semantic layer is taught what 'a particular' means for this domain below.",
-
   "package_name": "agentic-startup-generalist",
   "package_kind": "SHARED, public agent package",
-
   "sensitive_prefixes": [
     "hermes-skill/",
     "hermes-plugin/",
-    "docker/SOUL",
+    "docker/",
     "docs/"
   ],
   "$comment_prefixes": "Paths whose CONTENT could leak operator/venture particulars. Top-level *.md (README, CONTRIBUTING) are always included automatically.",
-
   "semantic": {
     "domain_noun": "venture",
-    "$comment_domain_noun": "A 'particular' belongs to one venture — one startup this agent serves. The package is the generic substrate; a venture's board, metrics, team, and roadmap are its particulars and must never land here.",
+    "$comment_domain_noun": "A 'particular' belongs to one venture \u2014 one startup this agent serves. The package is the generic substrate; a venture's board, metrics, team, and roadmap are its particulars and must never land here.",
     "flag_examples": [
       "personal names of founders, team members, advisors, investors, or customers tied to a specific venture",
       "specific company or product names tied to one active venture (not generic/public reference)",
       "revenue, ARR, burn, runway, valuation, cap-table, or pricing figures for a specific venture",
       "retention, activation, conversion, or cohort metrics from a specific venture's real data",
       "Notion database/page IDs, Slack channel or workspace IDs, Slack user IDs, Linear/Jira project keys, or GitHub org/repo names tied to one venture",
-      "a messaging or account identifier tied to a real person — a Signal/Telegram UUID, a contact phone, an allowlisted user ID (these belong in deployment config/secrets, never in the package)",
+      "a messaging or account identifier tied to a real person \u2014 a Signal/Telegram UUID, a contact phone, an allowlisted user ID (these belong in deployment config/secrets, never in the package)",
       "internal hostnames, tailnet addresses, IPs, or deployment targets for a venture's infrastructure",
       "a codename or label that identifies one particular venture (e.g. used as a skill name or heading)",
       "security findings, vulnerabilities, or audit results tied to a specific venture's systems",
@@ -35,7 +32,6 @@
     ],
     "model": "claude-opus-4-8"
   },
-
   "deterministic": {
     "$comment": "The credential/PII layer runs with NO external dependencies and FAILS CLOSED. These patterns are conservative defaults; add your own. Allowlist false-positives by exact line substring in 'allow_substrings'.",
     "enabled": true,
@@ -49,6 +45,6 @@
     "skip_paths": [
       "tests/"
     ],
-    "$comment_skip_paths": "DO NOT REMOVE. Path prefixes the deterministic layer does NOT scan. tests/ legitimately holds credential-SHAPED fixtures (sk-ant-..., AKIA...) to exercise the detectors; scanning them self-flags and hard-fails a clean repo. The scanner defaults this key to EMPTY when absent, so omitting it is not a no-op — it breaks the gate. The upstream usecase-package-template's SETUP.md section-2 example omits this key; that is a bug in that template, not guidance. Keep this tight — only paths that intentionally hold pattern-shaped non-secrets."
+    "$comment_skip_paths": "DO NOT REMOVE. Path prefixes the deterministic layer does NOT scan. tests/ legitimately holds credential-SHAPED fixtures (sk-ant-..., AKIA...) to exercise the detectors; scanning them self-flags and hard-fails a clean repo. The scanner defaults this key to EMPTY when absent, so omitting it is not a no-op \u2014 it breaks the gate. The upstream usecase-package-template's SETUP.md section-2 example omits this key; that is a bug in that template, not guidance. Keep this tight \u2014 only paths that intentionally hold pattern-shaped non-secrets."
   }
 }

@@ -29,8 +29,19 @@ name: sanitization
 #   Until it is decided, fork PRs get deterministic-only coverage and a
 #   maintainer must review particulars by hand before merging.
 
+#   * A RELEASE is the one moment the diff-scoped PR gate cannot cover, because
+#     what ships is the whole tree, not a diff. Publishing v0.1.0 with a tag that
+#     predated its own LICENSE (2026-07-31) proved the gap: every check was green
+#     and none of them had ever looked at the tree being released. So tags and
+#     manual dispatch run `release-audit` below — full tree, semantic layer
+#     mandatory, fails closed.
+
 on:
   pull_request:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -53,7 +64,48 @@ jobs:
       - name: Run test suite
         run: python -m pytest tests/ -q
 
+  release-audit:
+    # What the PR gate structurally cannot do: scan the WHOLE TREE that is about
+    # to ship, with the semantic layer mandatory. Runs on a v* tag and on manual
+    # dispatch. Never diff-scoped — a release is not a diff.
+    #
+    # Fails closed by construction: --require-semantic exits non-zero if
+    # ANTHROPIC_API_KEY is missing, so a misconfigured secret blocks the release
+    # instead of quietly degrading to a deterministic-only pass.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps (semantic layer + self-tests)
+        run: pip install anthropic pytest
+
+      - name: Scanner self-tests
+        run: python -m pytest tests/test_check_sanitization.py -q
+
+      - name: Full-tree audit of the release ref (fails closed)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/check_sanitization.py --full-tree --require-semantic
+
+      - name: LICENSE must reach every installed subdirectory
+        # Swarm Map installs SUBDIRECTORIES (hermes-skill, hermes-plugin, docker),
+        # not the repo root, so a root-only LICENSE leaves an installed artifact
+        # unlicensed in place. Found 2026-07-31. Guard it so it cannot regress.
+        run: |
+          missing=0
+          for d in hermes-skill hermes-plugin docker; do
+            if [ ! -f "$d/LICENSE" ]; then echo "::error::$d/LICENSE is missing"; missing=1; fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "LICENSE present in all three installed subdirectories."
+
   sanitize:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

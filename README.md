@@ -87,10 +87,13 @@ Once source and surface are bound, the transcript → task pipeline runs on its 
   full pass. On same-repo PRs the gate runs with `--require-semantic` and fails closed if
   the key is missing. See [CONTRIBUTING.md](CONTRIBUTING.md#sanitization).
 - **Instance-overlay `.gitignore`** — `ventures/`, `instance/`, `.overlay/`, and `.env` are
-  private by construction. A venture's operational data cannot accidentally reach the shared
-  package.
+  kept out of the shared package by construction, so a venture's operational data is not
+  committed by accident. It is a default, not a seal: `git add -f` overrides any ignore rule,
+  which is why the sanitization gate below exists as the second half of the model.
 - **CI workflow** — `.github/workflows/sanitization.yml` runs the test suite, the scanner
-  self-tests, and the diff-mode gate on every PR.
+  self-tests, and the diff-mode gate on every PR — plus a `release-audit` job on every `v*`
+  tag that scans the **whole tree** with the semantic layer mandatory. A release is not a
+  diff, so the PR gate cannot cover it.
 
 ---
 
