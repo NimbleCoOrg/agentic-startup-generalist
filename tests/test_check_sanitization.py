@@ -328,3 +328,48 @@ def test_hard_fail_hits_are_reported_when_require_semantic_has_no_key(
     out = capsys.readouterr().out
     assert rc == 2
     assert "SECRET/PII hermes-skill/SKILL.md" in out
+
+
+# ---- verdict extraction from a real-world model reply ------------------------
+
+def test_extract_json_survives_a_brace_in_trailing_prose():
+    """The exact shape that hard-failed CI run 30501264267.
+
+    The model answered correctly and then added a sentence containing a brace.
+    First-`{`-to-last-`}` spans both, fails with "Extra data", and the last-`{`
+    retry lands inside the prose — so a good verdict became a parse error and,
+    under --require-semantic, a red gate.
+    """
+    reply = '{"flagged": false, "reasons": []}\n\nHere is my {reasoning} note.'
+    assert cs._extract_json(reply) == {"flagged": False, "reasons": []}
+
+
+def test_extract_json_survives_a_markdown_fence():
+    reply = '```json\n{"flagged": true, "reasons": ["a founder name"]}\n```'
+    assert cs._extract_json(reply)["flagged"] is True
+
+
+def test_extract_json_skips_a_non_verdict_object_before_the_verdict():
+    """Take the first object that is actually a verdict, not merely the first object."""
+    reply = '{"note": "thinking out loud"}\n{"flagged": false, "reasons": []}'
+    assert cs._extract_json(reply) == {"flagged": False, "reasons": []}
+
+
+def test_extract_json_keeps_nested_braces_intact():
+    reply = 'verdict: {"flagged": true, "reasons": ["id {abc} leaked"]} — end {x}'
+    assert cs._extract_json(reply)["reasons"] == ["id {abc} leaked"]
+
+
+def test_extract_json_raises_when_there_is_no_verdict():
+    import pytest
+    for reply in ("no braces at all", "{not json", '{"other": 1}'):
+        with pytest.raises(ValueError):
+            cs._extract_json(reply)
+
+
+def test_extract_json_error_truncates_a_long_reply():
+    """The reply is echoed into CI logs on failure — don't dump an unbounded blob."""
+    import pytest
+    with pytest.raises(ValueError) as ei:
+        cs._extract_json("x" * 5000)
+    assert len(str(ei.value)) < 600

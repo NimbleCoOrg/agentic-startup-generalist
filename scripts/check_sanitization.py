@@ -105,16 +105,32 @@ def build_system_prompt(cfg):
 
 
 def _extract_json(text):
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        raise ValueError(f"no JSON object in model reply: {text!r}")
-    try:
-        return json.loads(text[start: end + 1])
-    except json.JSONDecodeError:
-        start2 = text.rfind("{")
-        if start2 != -1 and start2 < end:
-            return json.loads(text[start2: end + 1])
-        raise
+    """Pull the verdict object out of a model reply that may carry prose or fences.
+
+    The naive first-`{`-to-last-`}` span breaks on the single most common reply
+    shape: a correct verdict followed by a sentence that happens to contain a
+    brace. That span then holds `{...}\n\n...{...}` and fails with "Extra data",
+    and a last-`{` retry lands on the brace *inside the prose* — so a perfectly
+    good verdict is thrown away and the gate hard-fails with a parse error.
+
+    Instead, walk every `{` and let the decoder consume exactly one value from
+    that offset, taking the first object that actually looks like a verdict.
+    That tolerates prose on both sides, ```json fences, nested braces, and a
+    trailing second object, without ever guessing at where the object ends.
+    """
+    decoder = json.JSONDecoder()
+    idx = text.find("{")
+    while idx != -1:
+        try:
+            obj, _ = decoder.raw_decode(text, idx)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(obj, dict) and "flagged" in obj:
+                return obj
+        idx = text.find("{", idx + 1)
+    shown = text if len(text) <= 400 else text[:400] + "…"
+    raise ValueError(f"no verdict object in model reply: {shown!r}")
 
 
 def assess(content, client, filename, system_prompt, model):
