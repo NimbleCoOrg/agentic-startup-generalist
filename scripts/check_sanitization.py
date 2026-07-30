@@ -26,6 +26,7 @@ Config: sanitize.config.json at repo root (see that file's comments).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -133,7 +134,25 @@ def _extract_json(text):
     raise ValueError(f"no verdict object in model reply: {shown!r}")
 
 
+_ASSESS_CACHE = {}
+
+
 def assess(content, client, filename, system_prompt, model):
+    # Identical bytes MUST get an identical verdict. On 2026-07-31 three
+    # byte-identical LICENSE files got two different verdicts inside a single
+    # run, because each file is its own model call. That makes the gate a coin
+    # flip: it can block at random and, worse, pass a dirty file at random.
+    #
+    # Memoising on a hash of (content, filename-independent) collapses duplicates
+    # to one call and one verdict, by construction. `temperature` is NOT the fix
+    # here — it is deprecated on this model family and the API rejects it.
+    #
+    # This does not make judgment stable ACROSS runs; nothing short of not using
+    # a model would. That is why a semantic hit exits 123 ("needs human review")
+    # rather than 1 ("secret found") — it is a review prompt, not a verdict.
+    key = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()
+    if key in _ASSESS_CACHE:
+        return _ASSESS_CACHE[key]
     msg = client.messages.create(
         model=model, max_tokens=1024, system=system_prompt,
         messages=[{"role": "user", "content": f"File: {filename}\n\n---\n{content}\n---"}],
@@ -144,7 +163,9 @@ def assess(content, client, filename, system_prompt, model):
     reasons = verdict.get("reasons", [])
     if isinstance(reasons, str):
         reasons = [reasons]
-    return {"flagged": bool(verdict["flagged"]), "reasons": list(reasons)}
+    result = {"flagged": bool(verdict["flagged"]), "reasons": list(reasons)}
+    _ASSESS_CACHE[key] = result
+    return result
 
 
 def api_key():
