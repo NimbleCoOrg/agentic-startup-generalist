@@ -30,11 +30,23 @@ name: sanitization
 #   maintainer must review particulars by hand before merging.
 
 #   * A RELEASE is the one moment the diff-scoped PR gate cannot cover, because
-#     what ships is the whole tree, not a diff. Publishing v0.1.0 with a tag that
-#     predated its own LICENSE (2026-07-31) proved the gap: every check was green
-#     and none of them had ever looked at the tree being released. So tags and
-#     manual dispatch run `release-audit` below — full tree, semantic layer
-#     mandatory, fails closed.
+#     what ships is the whole tree, not a diff. v0.1.0 (published 2026-07-21) was
+#     tagged one commit BEFORE the pass that added its own LICENSE; the problem
+#     was found and the tag re-pointed on 2026-07-31. Every check had been green,
+#     and none of them had ever looked at the tree being released.
+#
+#     `release-audit` below closes that, with one honest limitation:
+#
+#       - workflow_dispatch is the GATE. Run it green against the release
+#         candidate BEFORE creating the tag. This is the run that decides.
+#       - the v* tag trigger is an ALARM, not a gate. By the time a tag push
+#         starts a job, the tag already exists and is already public — and
+#         Swarm Map's registry pins by tag NAME, so installs resolve to that tree
+#         the instant it lands. A red X ninety seconds later cannot un-publish it.
+#
+#     Making the tag genuinely un-cuttable means creating it from inside a green
+#     workflow run (needs `contents: write`). That is the right next step and is
+#     deliberately not bolted on here.
 
 on:
   pull_request:
@@ -64,14 +76,36 @@ jobs:
       - name: Run test suite
         run: python -m pytest tests/ -q
 
+      - name: LICENSE must reach every INSTALLED subdirectory
+        # Swarm Map installs `hermes-skill/` and `hermes-plugin/` as whole trees
+        # (artifacts-sync does a recursive copy), so a root-only LICENSE leaves
+        # them unlicensed in place. Found 2026-07-31.
+        #
+        # `docker/` is deliberately NOT in this list. It is the registry's `soul`
+        # source, and that path extracts exactly one file — SOUL.template.md,
+        # renamed SOUL.md — then discards the rest of the clone. No licence can
+        # travel with it by that mechanism, so a docker/LICENSE would be cargo.
+        #
+        # This lives in `tests` (unconditional) rather than in the release job,
+        # so a PR that deletes one of these fails immediately instead of at tag
+        # time — which is after the point of no return.
+        run: |
+          missing=0
+          for d in hermes-skill hermes-plugin; do
+            if [ ! -f "$d/LICENSE" ]; then echo "::error::$d/LICENSE is missing"; missing=1; fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "LICENSE present in both installed subdirectories."
+
   release-audit:
     # What the PR gate structurally cannot do: scan the WHOLE TREE that is about
-    # to ship, with the semantic layer mandatory. Runs on a v* tag and on manual
-    # dispatch. Never diff-scoped — a release is not a diff.
+    # to ship, with the semantic layer mandatory. Never diff-scoped — a release
+    # is not a diff. See the header for why dispatch is the gate and the tag
+    # trigger is only an alarm.
     #
-    # Fails closed by construction: --require-semantic exits non-zero if
-    # ANTHROPIC_API_KEY is missing, so a misconfigured secret blocks the release
-    # instead of quietly degrading to a deterministic-only pass.
+    # --require-semantic exits non-zero when ANTHROPIC_API_KEY is absent, so a
+    # misconfigured secret fails the audit instead of quietly degrading to a
+    # deterministic-only pass that looks identical when green.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -92,17 +126,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python scripts/check_sanitization.py --full-tree --require-semantic
 
-      - name: LICENSE must reach every installed subdirectory
-        # Swarm Map installs SUBDIRECTORIES (hermes-skill, hermes-plugin, docker),
-        # not the repo root, so a root-only LICENSE leaves an installed artifact
-        # unlicensed in place. Found 2026-07-31. Guard it so it cannot regress.
-        run: |
-          missing=0
-          for d in hermes-skill hermes-plugin docker; do
-            if [ ! -f "$d/LICENSE" ]; then echo "::error::$d/LICENSE is missing"; missing=1; fi
-          done
-          [ "$missing" -eq 0 ] || exit 1
-          echo "LICENSE present in all three installed subdirectories."
 
   sanitize:
     if: github.event_name == 'pull_request'

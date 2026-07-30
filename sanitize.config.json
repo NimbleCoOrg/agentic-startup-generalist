@@ -28,7 +28,10 @@
       "generic methodology (\"how to structure a weekly rollup\", \"how to grade a PMF signal\", \"how to frame a decision for a human gate\")",
       "tool, API, library, or product names used generically (Notion, Slack, Linear, GitHub, PostHog, semgrep)",
       "well-known public reference material or frameworks used illustratively",
-      "generic role nouns (founder, operator, maintainer) not attached to a named person"
+      "generic role nouns (founder, operator, maintainer) not attached to a named person",
+      "this package's OWN identity: the maintaining org (NimbleCo, NimbleCoOrg) and this repository's own name (agentic-startup-generalist). The package is published BY that org \u2014 its own name is not a venture particular. A DIFFERENT venture's org or repo still flags.",
+      "this package's own MIT copyright line, and the canonical clone/install URL of this repository",
+      "the runtime this package targets by design (hermes-agent-mt, Swarm Map) \u2014 a documented dependency, not a leaked particular"
     ],
     "model": "claude-opus-4-8"
   },

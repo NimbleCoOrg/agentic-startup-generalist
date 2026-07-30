@@ -134,8 +134,12 @@ def _extract_json(text):
 
 
 def assess(content, client, filename, system_prompt, model):
+    # temperature=0. Without it this gate is a coin flip: on 2026-07-31 three
+    # byte-identical LICENSE files got two different verdicts in ONE run, so a
+    # release could be blocked at random and — worse — a dirty file could pass
+    # at random. Determinism is what makes a gate a gate.
     msg = client.messages.create(
-        model=model, max_tokens=1024, system=system_prompt,
+        model=model, max_tokens=1024, temperature=0, system=system_prompt,
         messages=[{"role": "user", "content": f"File: {filename}\n\n---\n{content}\n---"}],
     )
     verdict = _extract_json(msg.content[0].text)
