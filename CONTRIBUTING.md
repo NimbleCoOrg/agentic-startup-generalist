@@ -1,8 +1,8 @@
 # Contributing to agentic-startup-generalist
 
-> New here? Read [docs/onboarding-contributors.md](docs/onboarding-contributors.md)
-> first — the one-sitting tour of the layout and the one rule that matters most.
-> This file is the detailed reference.
+> New here? Read [docs/onboarding.md](docs/onboarding.md) first — the one-sitting
+> tour of the layout and the one rule that matters most. This file is the
+> detailed reference.
 
 `agentic-startup-generalist` is the shared, generic early-stage startup operations
 capability package — plugins, skills, tools, and the agent's base soul. Operators run
@@ -19,13 +19,13 @@ enforces the structural half of this model (`ventures/`, `instance/`, `.overlay/
 are all gitignored). The sanitization gate enforces the other half on every PR.
 
 If a change only needs an API key, **you do not edit this repo** — the operator adds
-the key in HSM or their `.env`. That is a runtime concern, not a code change.
+the key in Swarm Map or their `.env`. That is a runtime concern, not a code change.
 
 ## Three ways to add a capability
 
 | You want to…          | Where it goes                                    | How it ships                                     |
 |-----------------------|--------------------------------------------------|--------------------------------------------------|
-| Add an **API key**    | operator's HSM env or `.env`                     | injected at runtime — **not a code change**      |
+| Add an **API key**    | operator's Swarm Map env or `.env`                     | injected at runtime — **not a code change**      |
 | Add a **tool/skill**  | `hermes-plugin/` or `hermes-skill/`              | merged here → instances pull + restart           |
 | Add a **system binary** (a domain CLI tool, …) | `docker/Dockerfile` | image rebuild + redeploy (operator action) |
 
@@ -37,7 +37,9 @@ just `git pull` + restart.
 
 1. Branch from `main`.
 2. Make your change. Add tests for new behavior (`python -m pytest tests/ -v`).
-   Install dev deps first: `pip install -r requirements-dev.txt`.
+   Install dev deps first: `pip install pytest anthropic` — the engine itself is
+   stdlib-only, `pytest` runs the suite, and `anthropic` is needed only by the
+   sanitization gate's semantic layer.
 3. Open a PR against `main`.
 4. Both the `tests` check and the `sanitization` check must pass (or be explicitly
    cleared — see merge policy below).
@@ -60,25 +62,45 @@ flag is **not** an automatic rejection — it routes the PR to a human maintaine
 makes the call. If your PR is flagged and you believe it's clean, say so in the PR
 description; a maintainer reviews the flagged content and decides.
 
-The semantic layer needs `ANTHROPIC_API_KEY`. Set it as a repo Actions secret (this is
-on the onboarding checklist) so the layer runs in CI — it's the part that catches
-venture particulars the regexes can't. Without the key it skips with a loud warning
-(the deterministic layer still hard-fails on secrets/PII), so local/offline runs work.
-**Once your key is wired, make the semantic layer mandatory** by appending
-`--require-semantic` to the gate step in `.github/workflows/sanitization.yml`: the gate
-then fails closed if the key is ever missing, instead of silently passing
-deterministic-only.
+The semantic layer needs `ANTHROPIC_API_KEY`, and this is where the gate's coverage is
+**not uniform**. Read this before you trust a green check:
+
+| PR origin | Deterministic layer | Semantic layer |
+|---|---|---|
+| Same-repo branch | Runs, hard-fails on any hit | Runs, and the gate uses `--require-semantic` so a missing key exits non-zero instead of passing |
+| **Fork** | Runs, hard-fails on any hit | **Cannot run** — GitHub does not expose repository secrets to `pull_request` runs from forks |
+
+So on a fork PR, a green `sanitization` check means "no secrets or PII found". It does
+**not** mean "no venture particulars found" — nothing checked for those. The workflow
+emits a warning annotation saying so, and a maintainer must review the diff for
+particulars by hand before merging. Closing that gap requires switching the trigger to
+`pull_request_target`, which is a deliberate security decision (it exposes the key to a
+workflow running alongside untrusted PR code) and is intentionally not enabled — see the
+security note at the top of `.github/workflows/sanitization.yml`.
+
+Locally, the gate skips the semantic layer with a loud warning when no key is set, and
+labels its own output deterministic-only, so offline runs work without pretending to be
+a full pass. Pass `--require-semantic` to make a missing key an error instead.
+
+A key that is *present but unusable* — malformed, revoked, rate-limited, or the API
+unreachable — counts as "the layer did not run", not as a pass and not as a crash. The
+gate reports why, and `--require-semantic` decides whether that's fatal. If you see
+`Illegal header value`, the stored key has stray whitespace or a trailing newline; the
+gate strips surrounding whitespace itself, but a secret containing an interior newline
+has to be re-entered.
 
 To tune what counts as a particular for this domain, edit `sanitize.config.json` —
 that is the single configuration surface for the gate. See the inline comments in that
 file.
 
-## Merge policy (convention-enforced)
+## Merge policy
 
-These rules are enforced by **convention, not by GitHub branch protection** — GitHub
-does not enforce protected branches on private repos under the free plan. See
-[docs/privacy-and-visibility.md](docs/privacy-and-visibility.md) for the rationale.
-The `tests` and `sanitization` checks run and are visible on every PR, so:
+This repository is public, so GitHub branch protection and required status checks are
+available and **should** be turned on — see
+[docs/privacy-and-visibility.md](docs/privacy-and-visibility.md#branch-protection) for the
+recommended settings. Until they are configured these rules hold by **convention only**:
+the `tests` and `sanitization` checks run and are visible on every PR, but nothing
+mechanically blocks a merge past a red one. Either way:
 
 - **Red `tests` = hard stop.** Do not merge until the suite is green.
 - **Deterministic SECRET/PII hit = hard stop.** Remove the flagged content; there is
@@ -86,16 +108,19 @@ The `tests` and `sanitization` checks run and are visible on every PR, so:
 - **Semantic FLAG = human review required.** A maintainer must inspect the flagged
   content and approve before merge. The flag is advisory; the human is the authority.
 - **Do not merge your own PR unreviewed.** Wait for a maintainer's explicit approval.
+- **Fork PR = review particulars by hand.** The semantic layer cannot run on fork PRs,
+  so a green check does not cover venture particulars. See
+  [Sanitization](#sanitization) above.
 
-When the project moves to a plan that supports protected branches, or before adding
-external contributors, these become hard-enforced gates rather than conventions.
+Configure branch protection to make the first two hard-enforced rather than conventional —
+do it before adding contributors you haven't worked with.
 
 ## Adding a capability — worked examples
 
 ### API key only
 
 The operator needs to call a new third-party service. No code change is needed here.
-The operator adds the key to HSM under the agent's environment config (or to their
+The operator adds the key to Swarm Map under the agent's environment config (or to their
 `.env` for local development). The tool code that reads the key may already exist, or
 it gets added as a plugin (see below) — but the key value itself is never committed.
 
@@ -112,10 +137,10 @@ is needed and what capability it unlocks. Once merged, operators rebuild the ima
 (`docker build`) and redeploy — this is a coordinated operator action, so minimize
 these changes and batch them when possible.
 
-## Promoting to your own package or upstream HSM
+## Promoting to your own package or upstream to Swarm Map
 
 If your work generalizes beyond this package — a plugin pattern that any Hermes agent
 could use, a sanitization improvement, a workflow change — see
 [docs/promotion-and-upstream.md](docs/promotion-and-upstream.md) for the promotion
 flow: how to extract and sanitize work from your private instance into a publishable
-form, and how to submit upstream to the HSM base.
+form, and how to submit upstream to the Swarm Map base.

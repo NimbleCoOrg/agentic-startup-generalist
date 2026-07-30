@@ -131,6 +131,142 @@ def test_main_require_semantic_fails_without_key(tmp_path, monkeypatch):
     assert rc == 2
 
 
+def test_deterministic_only_pass_does_not_claim_both_layers(tmp_path, monkeypatch, capsys):
+    """A no-key run over content-bearing files must PASS but say plainly that the
+    semantic layer did not run. Reporting a bare 'clean' here is the honesty gap:
+    it reads as a full pass while only half the gate executed."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology: grade sources A-F.")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    rc = cs.main(["hermes-skill/SKILL.md"], root=root)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "semantic layer SKIPPED" in out
+    assert "DETERMINISTIC ONLY" in out
+    assert "both layers ran" not in out
+
+
+def test_no_sensitive_files_is_distinguished_from_a_skipped_semantic_layer(
+    tmp_path, monkeypatch, capsys
+):
+    """Nothing for the semantic layer to scan is not the same failure mode as the
+    semantic layer being unable to run — don't emit the scary warning for it."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "engine/router.py", "def route(x): return x")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    rc = cs.main(["engine/router.py"], root=root)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no content-bearing files in scope" in out
+    assert "SKIPPED" not in out
+
+
+def test_require_semantic_passes_when_nothing_needs_the_semantic_layer(tmp_path, monkeypatch):
+    """--require-semantic must not fail a diff that has no content-bearing files —
+    otherwise every engine-only PR breaks CI once the flag is wired."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "engine/router.py", "def route(x): return x")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert cs.main(["--require-semantic", "engine/router.py"], root=root) == 0
+
+
+class _ExplodingClient:
+    """Stands in for a malformed/revoked key or an unreachable API."""
+
+    def __init__(self, exc):
+        self._exc = exc
+        self.messages = self
+
+    def create(self, **kw):
+        raise self._exc
+
+
+def test_api_key_is_whitespace_stripped(monkeypatch):
+    """A secret pasted with a trailing newline must not reach the HTTP layer —
+    un-stripped it raises 'Illegal header value' deep inside httpx."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "  sk-ant-whatever\n")
+    assert cs.api_key() == "sk-ant-whatever"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "   \n ")
+    assert cs.api_key() == ""  # whitespace-only is absent, not present
+
+
+def test_semantic_failure_fails_closed_under_require_semantic(tmp_path, monkeypatch, capsys):
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["--require-semantic", "hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "could not run" in out
+    assert "failing closed" in out
+
+
+def test_semantic_failure_degrades_loudly_without_require_semantic(tmp_path, monkeypatch, capsys):
+    """Without the flag, an API failure must not hard-fail the run — but it also
+    must not be reported as a clean full pass."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "could not run" in out
+    assert "DETERMINISTIC ONLY" in out
+    assert "both layers ran" not in out
+
+
+def test_illegal_header_value_gets_an_actionable_hint(tmp_path, monkeypatch, capsys):
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json", '{"sensitive_prefixes":["hermes-skill/"]}')
+    _write(root, "hermes-skill/SKILL.md", "Generic methodology.")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    cs.main(["hermes-skill/SKILL.md"], root=root,
+            client_factory=lambda: _ExplodingClient(
+                RuntimeError("Illegal header value b'***'")))
+    assert "single unbroken line" in capsys.readouterr().out
+
+
+def test_failure_detail_walks_the_cause_chain():
+    """The SDK hides transport detail behind APIConnectionError('Connection error.').
+    Reporting only the outer exception loses the one actionable fact."""
+    try:
+        try:
+            raise ValueError("Illegal header value b'***'")
+        except ValueError as inner:
+            raise RuntimeError("Connection error.") from inner
+    except RuntimeError as exc:
+        detail = cs._describe_failure(exc)
+    assert "Connection error." in detail
+    assert "Illegal header value" in detail
+    assert "caused by" in detail
+    assert "single unbroken line" in detail  # hint found via the cause, not the surface
+
+
+def test_failure_detail_terminates_on_self_referential_cause():
+    exc = RuntimeError("boom")
+    exc.__context__ = exc  # pathological, but must not hang
+    assert "boom" in cs._describe_failure(exc)
+
+
+def test_secret_still_hard_fails_even_if_semantic_layer_breaks(tmp_path, monkeypatch):
+    """The deterministic floor is independent of the semantic layer's health."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json",
+           '{"sensitive_prefixes":["hermes-skill/"],"deterministic":{"enabled":true,"allow_substrings":[]}}')
+    _write(root, "hermes-skill/SKILL.md", "key sk-ant-api03-CCCCCCCCCCCCCCCCCCCCCCCC")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    assert rc == 1
+
+
 def test_skip_paths_excludes_fixtures_from_deterministic(tmp_path, monkeypatch):
     root = str(tmp_path)
     _write(root, "sanitize.config.json",
@@ -152,3 +288,88 @@ def test_full_tree_mode_scans_tracked_files(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     rc = cs.main(["--full-tree"], root=root)
     assert rc == 1  # AKIA key caught in full-tree sweep
+
+
+def test_hard_fail_hits_are_reported_even_when_the_semantic_layer_fails_closed(
+    tmp_path, monkeypatch, capsys
+):
+    """A broken key must not swallow a real credential hit.
+
+    --require-semantic returns 2 the moment the semantic layer can't run. If that
+    return happened before the deterministic report, the single most actionable
+    line the gate can print — the SECRET/PII hit it *did* find — would never reach
+    the log, which is exactly the CI state a malformed repo secret produces.
+    """
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json",
+           '{"sensitive_prefixes":["hermes-skill/"],'
+           '"deterministic":{"enabled":true,"allow_substrings":[]}}')
+    _write(root, "hermes-skill/SKILL.md", "oops AKIA1234567890ABCDEF left in prose")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-broken")
+    rc = cs.main(["--require-semantic", "hermes-skill/SKILL.md"], root=root,
+                 client_factory=lambda: _ExplodingClient(RuntimeError("Connection error.")))
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "SECRET/PII hermes-skill/SKILL.md" in out
+    assert "the deterministic layer DID run and hard-failed" in out
+
+
+def test_hard_fail_hits_are_reported_when_require_semantic_has_no_key(
+    tmp_path, monkeypatch, capsys
+):
+    """Same guarantee on the missing-key path, not just the broken-key path."""
+    root = str(tmp_path)
+    _write(root, "sanitize.config.json",
+           '{"sensitive_prefixes":["hermes-skill/"],'
+           '"deterministic":{"enabled":true,"allow_substrings":[]}}')
+    _write(root, "hermes-skill/SKILL.md", "oops AKIA1234567890ABCDEF left in prose")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    rc = cs.main(["--require-semantic", "hermes-skill/SKILL.md"], root=root)
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "SECRET/PII hermes-skill/SKILL.md" in out
+
+
+# ---- verdict extraction from a real-world model reply ------------------------
+
+def test_extract_json_survives_a_brace_in_trailing_prose():
+    """The exact shape that hard-failed CI run 30501264267.
+
+    The model answered correctly and then added a sentence containing a brace.
+    First-`{`-to-last-`}` spans both, fails with "Extra data", and the last-`{`
+    retry lands inside the prose — so a good verdict became a parse error and,
+    under --require-semantic, a red gate.
+    """
+    reply = '{"flagged": false, "reasons": []}\n\nHere is my {reasoning} note.'
+    assert cs._extract_json(reply) == {"flagged": False, "reasons": []}
+
+
+def test_extract_json_survives_a_markdown_fence():
+    reply = '```json\n{"flagged": true, "reasons": ["a founder name"]}\n```'
+    assert cs._extract_json(reply)["flagged"] is True
+
+
+def test_extract_json_skips_a_non_verdict_object_before_the_verdict():
+    """Take the first object that is actually a verdict, not merely the first object."""
+    reply = '{"note": "thinking out loud"}\n{"flagged": false, "reasons": []}'
+    assert cs._extract_json(reply) == {"flagged": False, "reasons": []}
+
+
+def test_extract_json_keeps_nested_braces_intact():
+    reply = 'verdict: {"flagged": true, "reasons": ["id {abc} leaked"]} — end {x}'
+    assert cs._extract_json(reply)["reasons"] == ["id {abc} leaked"]
+
+
+def test_extract_json_raises_when_there_is_no_verdict():
+    import pytest
+    for reply in ("no braces at all", "{not json", '{"other": 1}'):
+        with pytest.raises(ValueError):
+            cs._extract_json(reply)
+
+
+def test_extract_json_error_truncates_a_long_reply():
+    """The reply is echoed into CI logs on failure — don't dump an unbounded blob."""
+    import pytest
+    with pytest.raises(ValueError) as ei:
+        cs._extract_json("x" * 5000)
+    assert len(str(ei.value)) < 600

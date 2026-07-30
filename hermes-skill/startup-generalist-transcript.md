@@ -178,9 +178,11 @@ This shared skill names no product. The concrete bindings — *this venture's* r
 source, *this venture's* task database and its property schema, which person's tasks route
 where — live in the operator's private per-venture overlay
 (`$HERMES_HOME/skills/startup-generalist-{venture-slug}.md`) and in the plugin's runtime
-configuration, never in this file. The sanitization gate enforces that boundary: a database
-ID or a source folder ID committed here is a leak the gate will block. See the overlay
-mechanism in [`SKILL.md`](./SKILL.md) and `sanitize.config.json`.
+configuration, never in this file. The sanitization gate backs that boundary: a database
+ID or a source folder ID committed here is the kind of leak its semantic layer is tuned
+to flag — but that layer cannot run on fork PRs, so it is a backstop and not a guarantee.
+See the overlay mechanism in [`SKILL.md`](./SKILL.md), `sanitize.config.json`, and
+[CONTRIBUTING.md](../CONTRIBUTING.md#sanitization).
 
 When you add a new source or a new surface, you are adding an **adapter**, not editing this
 method. A new transcript source satisfies the source contract (give the pipeline a

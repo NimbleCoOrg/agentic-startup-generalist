@@ -1,7 +1,7 @@
 # agentic-startup-generalist
 
 A generalist operator for an early-stage venture, packaged as a Hermes agent — runnable
-standalone or managed via HSM (Hermes Swarm Map).
+standalone or managed via Swarm Map.
 
 In a venture with no specialists and no slack, this agent closes open loops: it researches,
 gathers and assesses evidence for product-market-fit questions, turns meetings into tracked
@@ -27,7 +27,7 @@ spine and are added as they earn their place.
 ## Open-core
 
 The whole self-hostable package — the methodology skill, the core tools, and the agent's
-soul — is free and public. Run it yourself with your own keys and Docker via HSM. The hosted,
+soul — is free and public. Run it yourself with your own keys and Docker via Swarm Map. The hosted,
 managed agent and premium skills are the paid tier; nothing here is crippled to sell the
 upgrade. If you want to run it yourself, everything you need is in this repository.
 
@@ -35,7 +35,7 @@ upgrade. If you want to run it yourself, everything you need is in this reposito
 
 ## Multiplayer by design
 
-This package targets [**hermes-agent-mt**](https://github.com/NimbleCoAI/hermes-agent-mt) —
+This package targets [**hermes-agent-mt**](https://github.com/NimbleCoOrg/hermes-agent-mt) —
 the multi-tenant Hermes runtime — not a single-user harness. One deployment can serve many
 users and contexts (Signal DMs, group chats, tenants) at once, which is the whole reason the
 privacy model has two levels rather than one: what your *repository* shows the world, and what
@@ -45,7 +45,7 @@ not an afterthought. If you only ever run one venture against one agent, this st
 just won't need half of it. See [docs/privacy-and-visibility.md](docs/privacy-and-visibility.md).
 
 The package layer itself is runtime-agnostic (a plugin + a skill + a soul + an optional
-engine), but the scaffolding — base image, instance bootstrap, HSM consumption — assumes the
+engine), but the scaffolding — base image, instance bootstrap, Swarm Map consumption — assumes the
 `hermes-agent-mt` image as its base. See [docs/onboarding.md](docs/onboarding.md).
 
 ---
@@ -55,8 +55,8 @@ engine), but the scaffolding — base image, instance bootstrap, HSM consumption
 **Standalone** — clone the repo, mount `hermes-plugin/` into an existing Hermes instance, and
 start the agent. See [docs/onboarding.md](docs/onboarding.md).
 
-**HSM-managed** — register the package in HSM, which handles image builds, env injection, and
-lifecycle. See [docs/onboarding.md](docs/onboarding.md#hsm).
+**Swarm Map-managed** — register the package in Swarm Map, which handles image builds, env injection, and
+lifecycle. See [docs/onboarding.md](docs/onboarding.md#b-run-it-through-swarm-map).
 
 Once source and surface are bound, the transcript → task pipeline runs on its own; see
 [docs/transcript-pipeline.md](docs/transcript-pipeline.md).
@@ -80,13 +80,17 @@ Once source and surface are bound, the transcript → task pipeline runs on its 
   fetch and task routing, the stage-honest PMF read, retention-curve reading, experiment
   falsifiability checks, positioning drafts, and decision framing.
 - **Two-layer sanitization gate** — deterministic regex (secrets, PII, API keys) as a
-  hard-fail floor; an LLM-semantic scan for venture particulars routed to human review. Both
-  run on every PR diff.
+  hard-fail floor; an LLM-semantic scan for venture particulars routed to human review.
+  The deterministic layer runs on every PR diff. The semantic layer needs
+  `ANTHROPIC_API_KEY`, which GitHub does not expose to PRs from forks — so on a fork PR
+  it cannot run, and the gate reports deterministic-only coverage instead of claiming a
+  full pass. On same-repo PRs the gate runs with `--require-semantic` and fails closed if
+  the key is missing. See [CONTRIBUTING.md](CONTRIBUTING.md#sanitization).
 - **Instance-overlay `.gitignore`** — `ventures/`, `instance/`, `.overlay/`, and `.env` are
   private by construction. A venture's operational data cannot accidentally reach the shared
   package.
-- **CI workflow** — `.github/workflows/sanitization.yml` runs scanner self-tests and the
-  diff-mode gate on every PR.
+- **CI workflow** — `.github/workflows/sanitization.yml` runs the test suite, the scanner
+  self-tests, and the diff-mode gate on every PR.
 
 ---
 
@@ -139,3 +143,9 @@ sanitization workflow.
 
 When a capability is ready to promote from your private instance back to this shared package,
 see [docs/promotion-and-upstream.md](docs/promotion-and-upstream.md).
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 NimbleCo.

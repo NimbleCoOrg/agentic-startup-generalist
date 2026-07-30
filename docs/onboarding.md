@@ -5,7 +5,7 @@ how to get it running, how to keep it current, and the one rule you need to
 internalize before you commit anything.
 
 Jump to: [How it fits together](#how-it-fits-together-read-this-first) ·
-[Run standalone](#a-run-it-standalone) · [Run through HSM](#b-run-it-through-hsm) ·
+[Run standalone](#a-run-it-standalone) · [Run through Swarm Map](#b-run-it-through-swarm-map) ·
 [Update safely](#c-update-the-running-agent) ·
 [Pull updates without overwriting your work](#d-pull-updates-without-overwriting-your-work) ·
 [Contribute without leaking](#e-contribute-without-leaking)
@@ -56,8 +56,8 @@ content you've already customized.
 
 You need: Docker, a data directory you control, and the package image.
 
-> **Base runtime.** `ghcr.io/nimblecoai/hermes-agent-mt` is
-> [`hermes-agent-mt`](https://github.com/NimbleCoAI/hermes-agent-mt) — the multi-tenant
+> **Base runtime.** `ghcr.io/nimblecoorg/hermes-agent-mt` is
+> [`hermes-agent-mt`](https://github.com/NimbleCoOrg/hermes-agent-mt) — the multi-tenant
 > Hermes runtime this package is built for. It carries the per-context scoping (the
 > glocal read floor, `MemoryStore(context_id=)`) that makes one deployment safe to share
 > across users. You *can* base on a single-user Hermes image, but then the cross-user
@@ -67,10 +67,10 @@ You need: Docker, a data directory you control, and the package image.
 binary):
 
 ```bash
-git clone https://github.com/NimbleCoAI/agentic-startup-generalist.git
+git clone https://github.com/NimbleCoOrg/agentic-startup-generalist.git
 cd agentic-startup-generalist
 docker build -f docker/Dockerfile -t agentic-startup-generalist:local \
-  --build-arg BASE_IMAGE=ghcr.io/nimblecoai/hermes-agent-mt .
+  --build-arg BASE_IMAGE=ghcr.io/nimblecoorg/hermes-agent-mt .
 ```
 
 **2. Wire up your data dir** (clones the package, seeds the soul, links the skill,
@@ -113,29 +113,29 @@ tells you if it is missing.
 
 ---
 
-## B. Run it through HSM
+## B. Run it through Swarm Map
 
-HSM (Hermes Swarm Map) is the harness manager used in production deployments. It
+Swarm Map is the harness manager used in production deployments. It
 owns the compose lifecycle, environment/secret injection, and per-agent deploy
-operations. When HSM manages your agent, **do not use `docker compose` directly** —
-use the HSM API. Running compose by hand against an HSM-managed agent can produce
+operations. When Swarm Map manages your agent, **do not use `docker compose` directly** —
+use the Swarm Map API. Running compose by hand against a Swarm Map-managed agent can produce
 conflicting state.
 
 The data layout is identical to standalone. What changes is the orchestrator:
 
-- **Enable the plugin** via the HSM UI or API. HSM reads `hermes-plugin/plugin.yaml`
+- **Enable the plugin** via the Swarm Map UI or API. Swarm Map reads `hermes-plugin/plugin.yaml`
   and surfaces the capability toggle.
-- **Environment / API keys** go into the HSM env store (encrypted). They are injected
-  at container start. The `requires_env` keys declared in `plugin.yaml` are what HSM
+- **Environment / API keys** go into the Swarm Map env store (encrypted). They are injected
+  at container start. The `requires_env` keys declared in `plugin.yaml` are what Swarm Map
   looks for — add any missing keys there and restart.
-- **Restart / redeploy** via the HSM API. The three restart modes:
+- **Restart / redeploy** via the Swarm Map API. The three restart modes:
   - `quick` — restart the container, no compose changes (e.g. after a `git pull`)
   - `recreate` — recreate from compose (e.g. after changing an image pin)
   - `rebuild` — rebuild the image (only when `docker/Dockerfile` has changed)
-- **The data dir** is still a bind-mount; HSM configures the mount path. Your
+- **The data dir** is still a bind-mount; Swarm Map configures the mount path. Your
   `ventures/` and `instance/` overlays are untouched by deploy operations.
 
-In short: standalone is for local development; HSM is how production instances run.
+In short: standalone is for local development; Swarm Map is how production instances run.
 The underlying model is the same — the orchestrator differs.
 
 ---
@@ -148,7 +148,7 @@ There are two update paths. Know which your change is before you act:
 |----------------------------------------------------|-------------------------------------------------|----------|
 | **Code** — a tool, plugin, skill, or soul update   | `git pull` in the data dir, then **restart**    | No       |
 | **System binary** — a new OS-level dependency      | rebuild `docker/Dockerfile`, bump the image pin, **recreate** | Yes  |
-| **An API key**                                     | add it in HSM env (or `.env` for standalone)    | No       |
+| **An API key**                                     | add it in Swarm Map env (or `.env` for standalone)    | No       |
 
 The common case — a new tool, an updated skill, a soul edit — ships with a pull and
 a restart, no image rebuild:
@@ -157,7 +157,7 @@ a restart, no image rebuild:
 # 1. PR merged to main
 # 2. on the running instance:
 cd /opt/data/agentic-startup-generalist && git pull
-# 3. restart via HSM quick-restart, or `docker compose restart` if standalone
+# 3. restart via Swarm Map quick-restart, or `docker compose restart` if standalone
 ```
 
 Because code is hot-mounted at runtime, nothing has to be baked into the image for
@@ -217,6 +217,11 @@ Two checks must pass:
    particulars for human review. A flag is not an automatic rejection; a maintainer
    decides. If you believe a flag is a false positive, say so in the PR.
 
+   **Coverage is not uniform.** The semantic layer needs `ANTHROPIC_API_KEY`, which
+   GitHub does not give to PRs from forks — so on a fork PR only the deterministic
+   layer runs, and a green check means "no secrets found", not "no particulars
+   found". See [CONTRIBUTING.md](../CONTRIBUTING.md#sanitization).
+
 Three layers protect you from leaking:
 
 1. **Structural** — particulars live in `ventures/` (git-ignored) and
@@ -246,7 +251,7 @@ and how to handle a flag — are in [CONTRIBUTING.md](../CONTRIBUTING.md) and
 | You have…                                      | You do **not** have…                           |
 |------------------------------------------------|------------------------------------------------|
 | Read/write access to `agentic-startup-generalist` | Access to anyone else's instance or data    |
-| Ability to open and review PRs                 | HSM / server / production deploy access        |
+| Ability to open and review PRs                 | Swarm Map / server / production deploy access        |
 | Your own `HERMES_HOME` (yours alone)           | Production secrets or API keys                 |
 
 Welcome. Build generic capability here; keep your venture data yours.

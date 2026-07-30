@@ -21,7 +21,9 @@ surface/source) add one adapter.
 
 Everything venture-specific below — page ids, database ids, tracker tokens, who routes
 where — lives in the operator's private overlay and `.env`, **never** in a committed file.
-The sanitization gate blocks a real id committed here.
+A real id committed here is what the sanitization gate's semantic layer exists to
+catch — but that layer cannot run on fork PRs, so treat the gate as a backstop, not
+a permission slip (see [CONTRIBUTING.md](../CONTRIBUTING.md#sanitization)).
 
 ---
 
@@ -42,7 +44,7 @@ page's block tree and returns its text — validated against real timestamped tr
 pages. It needs only a read-scoped integration token:
 
 ```bash
-# .env (standalone) or the HSM env store — never committed
+# .env (standalone) or the Swarm Map env store — never committed
 NOTION_API_KEY=<read-scoped integration token>
 ```
 
@@ -173,7 +175,7 @@ do not point an unattended runner at a non-inbox surface.
 | Thing | Where it goes | Committed? |
 |---|---|---|
 | Notion page ids, database ids, property names | routing config in the venture overlay / deployment glue | no |
-| `NOTION_API_KEY`, tracker tokens | `.env` (standalone) or the HSM env store | no |
+| `NOTION_API_KEY`, tracker tokens | `.env` (standalone) or the Swarm Map env store | no |
 | Remote-source refs and connector scope | venture overlay / deployment glue | no |
 | Who routes to which surface | `by_owner` / `by_kind` in the routing config | no |
 | Adapter code (an implemented external surface) | `engine/surfaces.py` — generic, no ids | **yes** |

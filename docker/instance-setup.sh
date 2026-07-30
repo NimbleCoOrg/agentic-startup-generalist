@@ -22,16 +22,15 @@
 # This is deliberately NOT a container ENTRYPOINT. The base image runs s6-overlay
 # (/init as PID 1); overriding the entrypoint breaks init and privilege drop.
 # Run this once after container creation, or on every start from your harness
-# manager (HSM) startup hook — whichever fits your operational model.
+# manager (Swarm Map) startup hook — whichever fits your operational model.
 
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────
 DATA_DIR="${HERMES_HOME:-${1:-/opt/data}}"
 
-# Canonical Git URL for this package. Defaults to the public Commons home the
-# package promotes to; override with PACKAGE_REPO_URL for a private/pre-promotion
-# deploy (e.g. the incubation repo at NimbleCoAI).
+# Canonical Git URL for this package. Override with PACKAGE_REPO_URL to deploy
+# from your own fork or mirror.
 REPO_URL="${PACKAGE_REPO_URL:-https://github.com/NimbleCoOrg/agentic-startup-generalist.git}"
 
 # Directory name the package clones into under DATA_DIR.
@@ -92,7 +91,7 @@ if [ -f "$CFG" ] && grep -qE "^[[:space:]]*-[[:space:]]*${PLUGIN_NAME}[[:space:]
 else
   echo "[${PACKAGE_DIR}-setup] ACTION: enable the '${PLUGIN_NAME}' plugin."
   echo "    Add it under plugins.enabled in config.yaml,"
-  echo "    or enable it via your harness manager (HSM)."
+  echo "    or enable it via your harness manager (Swarm Map)."
 fi
 
 echo "[${PACKAGE_DIR}-setup] done."

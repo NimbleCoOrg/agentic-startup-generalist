@@ -1,7 +1,7 @@
 # plugin.yaml — Hermes plugin manifest for agentic-startup-generalist
 #
 # This file is read by the Hermes plugin loader before __init__.py is
-# imported. It is the contract HSM installs against.
+# imported. It is the contract Swarm Map installs against.
 #
 # Register the plugin by adding a symlink:
 #   ~/.hermes-{agent-name}/plugins/agentic-startup-generalist -> /path/to/agentic-startup-generalist/hermes-plugin/
@@ -36,7 +36,7 @@ kind: standalone
 # tools that need them land, and NOT before: an unnecessary requires_env entry
 # is a startup warning that teaches operators to ignore startup warnings.
 #
-# When adding: name only the genuinely required. Secrets are injected by HSM
+# When adding: name only the genuinely required. Secrets are injected by Swarm Map
 # from its encrypted env store at runtime, never committed here.
 requires_env: []
 
