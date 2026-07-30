@@ -26,9 +26,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sanitization scope widened from `docker/SOUL` to all of `docker/`. The narrower prefix
   meant `docker/instance-setup.sh` and `docker/Dockerfile` were never seen by the semantic
   layer — and those were the files that carried content the public-hygiene pass removed.
-- The semantic layer now runs at `temperature: 0`. Without it the gate was non-deterministic:
-  on 2026-07-31 three byte-identical `LICENSE` files received two different verdicts within a
-  single run. A gate that can block at random can also pass at random.
+- The semantic layer now memoises verdicts on a content hash, so **byte-identical files get an
+  identical verdict by construction**. On 2026-07-31 three byte-identical `LICENSE` files
+  received two different verdicts within a single run — a gate that blocks at random can also
+  pass at random. (`temperature` is not the lever: it is deprecated on this model family and
+  the API rejects it.) This does not stabilise judgment *across* runs, which is why a semantic
+  hit exits `123` — "needs human review" — rather than `1`, "secret found". It is a review
+  prompt, not a verdict.
 - The package's own identity — the maintaining org, this repository's name, its MIT copyright
   line, and the runtime it targets by design — is now explicitly allow-listed for the semantic
   layer. A *different* venture's org or repo still flags. Without this the full-tree release
