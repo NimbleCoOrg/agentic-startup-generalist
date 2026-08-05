@@ -39,8 +39,11 @@ PACKAGE_DIR="agentic-startup-generalist"
 # Hermes skill name (used as the skills/ subdirectory name for the shared methodology skill).
 SKILL_NAME="startup-generalist-methodology"
 
-# Hermes plugin name (must match the key in config.yaml and plugin.yaml `name`).
-PLUGIN_NAME="agentic-startup-generalist"
+# Hermes plugin directory name (used for the plugins/ symlink and the
+# config.yaml enabled entry). MUST be a valid Python identifier: hermes-agent-mt
+# imports data-dir plugins as `hermes_plugins.<dirname>`, so a dashed name is
+# silently skipped by plugin discovery. Underscores, not dashes.
+PLUGIN_NAME="agentic_startup_generalist"
 
 PKG_DIR="$DATA_DIR/$PACKAGE_DIR"
 
@@ -83,6 +86,18 @@ else
 fi
 
 # ── 4. Plugin ─────────────────────────────────────────────────────────
+# Symlink the plugin into plugins/ under its importable name so the
+# hermes-agent-mt loader (`hermes_plugins.<dirname>`) can discover it. The
+# plugin resolves its own package root via realpath, so the symlink is safe.
+PLUGIN_LINK="$DATA_DIR/plugins/$PLUGIN_NAME"
+mkdir -p "$DATA_DIR/plugins"
+if [ ! -e "$PLUGIN_LINK" ]; then
+  ln -s "../${PACKAGE_DIR}/hermes-plugin" "$PLUGIN_LINK"
+  echo "[${PACKAGE_DIR}-setup] linked plugin at plugins/$PLUGIN_NAME (auto-updates on pull)"
+else
+  echo "[${PACKAGE_DIR}-setup] plugins/$PLUGIN_NAME exists — left untouched"
+fi
+
 # Plugin enablement lives in config.yaml. This script does not edit it
 # automatically — your harness manager owns the config. We check and report.
 CFG="$DATA_DIR/config.yaml"

@@ -26,7 +26,7 @@ import sys
 # ---------------------------------------------------------------------------
 # Path setup
 # ---------------------------------------------------------------------------
-# When deployed as a symlink from ~/.hermes-{name}/plugins/agentic-startup-generalist/ ->
+# When deployed as a symlink from ~/.hermes-{name}/plugins/agentic_startup_generalist/ ->
 # agentic-startup-generalist/hermes-plugin/, the package root is one level above this file.
 # Insert it so `engine`, `collectors`, or whatever your library is named can
 # be imported without any install step.
