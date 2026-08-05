@@ -3,9 +3,13 @@
 # This file is read by the Hermes plugin loader before __init__.py is
 # imported. It is the contract Swarm Map installs against.
 #
-# Register the plugin by adding a symlink:
-#   ~/.hermes-{agent-name}/plugins/agentic-startup-generalist -> /path/to/agentic-startup-generalist/hermes-plugin/
+# Register the plugin by adding a symlink (instance-setup.sh does this for you):
+#   ~/.hermes-{agent-name}/plugins/agentic_startup_generalist -> /path/to/agentic-startup-generalist/hermes-plugin/
 # Then restart the agent (or run `hermes plugin reload` if supported).
+#
+# The symlink name MUST be underscored: hermes-agent-mt imports data-dir
+# plugins as `hermes_plugins.<dirname>`, so a dashed directory name is not a
+# valid Python identifier and gets silently skipped by discovery.
 
 # REQUIRED — short slug identifying this plugin. Unique across all plugins
 # loaded by the agent. Matches the package directory name.
